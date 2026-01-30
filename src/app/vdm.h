@@ -96,6 +96,10 @@ void vdm_data_init (cy_stc_pdstack_context_t * context);
 void eval_vdm(cy_stc_pdstack_context_t * context, const cy_stc_pdstack_pd_packet_t *vdm,
         cy_pdstack_vdm_resp_cbk_t vdm_resp_handler);
 
+void eval_enter_usb(cy_stc_pdstack_context_t * context, const cy_stc_pdstack_pd_packet_t *eudo, cy_pdstack_app_resp_cbk_t app_resp_handler);
+
+/** @endcond */        
+
 #endif /* _VDM_H_ */
 
 /* End of File */

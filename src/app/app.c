@@ -45,6 +45,7 @@
 #include "cy_pdstack_dpm.h"
 #include "config.h"
 #include "psink.h"
+#include "psource.h"
 #include "swap.h"
 #include "vdm.h"
 #include "app.h"
@@ -64,6 +65,26 @@ app_sln_handler_t *solution_fn_handler;
 
 /* Variable to hold Application status for each USB-C port. */
 app_status_t app_status[NO_OF_TYPEC_PORTS];
+
+#if CY_PD_USB4_SUPPORT_ENABLE
+
+/*
+ * Follow "Valid Responses to Enter_USB Request" table for PD spec addendum.
+ * This function assumes that the UFP VDO1 is always present as the first product type VDO in the
+ * Discover_Identity response, for feature matching purposes.
+ */
+void eval_enter_usb(cy_stc_pdstack_context_t * context, const cy_stc_pdstack_pd_packet_t *eudo_p, cy_pdstack_app_resp_cbk_t app_resp_handler)
+{
+    uint8_t port = context->port;
+
+    /* Basic validity checks including message length would have been done by the PD stack. */
+    /* Default response: REJECT. */
+    app_get_resp_buf(port)->reqStatus = CY_PDSTACK_REQ_REJECT;
+
+    app_resp_handler(context, app_get_resp_buf(port));
+}
+#endif /* CY_PD_USB4_SUPPORT_ENABLE */
+
 
 #if (!CY_PD_CBL_DISC_DISABLE)
 static void app_cbl_dsc_timer_cb (cy_timer_id_t id, void *callbackContext);
@@ -644,4 +665,12 @@ bool app_is_typec_attached(void)
 
     return attached;
 }
+
+bool send_src_info (struct cy_stc_pdstack_context *ptrPdStackContext)
+{
+    /* Place holder for customer specific preparation
+     * It is possible to provide additional checking before sends source info message */
+    return true;
+}
+
 /* End of File */

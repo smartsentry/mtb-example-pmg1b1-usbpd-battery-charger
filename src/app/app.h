@@ -55,6 +55,9 @@
  * MACRO Definition
  ******************************************************************************/
 
+#define APP_PSOURCE_DIS_EXT_DIS_TIMER_PERIOD            (10u)
+/**< Duration of extra VBus discharge after voltage drops below desired level (in ms). */
+
 #define APP_PSINK_DIS_TIMER_PERIOD                      (250u)
 /**< Maximum time allowed for power sink disable operation (in ms). */
 
@@ -157,20 +160,32 @@ typedef struct
  */
 typedef struct
 {
-    cy_pdstack_pwr_ready_cbk_t          pwr_ready_cbk;          /**< Registered Power source callback. */
-    cy_pdstack_sink_discharge_off_cbk_t snk_dis_cbk;            /**< Registered Power sink callback. */
-    app_resp_t                          appResp;               /**< Buffer for APP responses. */
-    vdm_resp_t                          vdmResp;               /**< Buffer for VDM responses. */
-    uint16_t                            psnk_volt;              /**< Current PSink voltage in mV units. */
-    uint16_t                            psnk_cur;               /**< Current PSink current in 10mA units. */
-    uint8_t                             vdm_task_en;            /**< Flag to indicate is vdm task manager enabled. */
-    uint8_t                             disc_cbl_pending;       /**< Flag to indicate is cable discovery is pending. */
-    uint8_t                             cbl_disc_id_finished;   /**< Flag to indicate that cable disc id finished. */
-    uint8_t                             vdm_version;            /**< Live VDM version. */
-    uint8_t                             vdm_minor_version;      /**< Live VDM minor version. */
-    uint8_t                             fault_status;           /**< Fault status bits for this port. */
-    bool                                alt_mode_entered;       /**< Alternate modes currently entered. */
-    cy_pdstack_vdm_resp_cbk_t           vdm_resp_cbk;           /**< VDM response handler callback. */
+    cy_pdstack_pwr_ready_cbk_t pwr_ready_cbk;        /**< Registered Power source callback. */
+    cy_pdstack_sink_discharge_off_cbk_t snk_dis_cbk; /**< Registered Power sink callback. */
+    app_resp_t appResp;                  /**< Buffer for APP responses. */
+    vdm_resp_t vdmResp;                  /**< Buffer for VDM responses. */
+    uint16_t psrc_volt;                   /**< Current Psource voltage in mV */
+    uint16_t psrc_volt_old;               /**< Old Psource voltage in mV */
+    uint16_t psnk_volt;                   /**< Current PSink voltage in mV units. */
+    uint16_t psnk_cur;                    /**< Current PSink current in 10mA units. */
+    uint8_t disc_cbl_pending;             /**< Flag to indicate is cable discovery is pending. */
+    uint8_t cbl_disc_id_finished;         /**< Flag to indicate that cable disc id finished. */
+    uint8_t vdm_version;                  /**< Live VDM major version. */
+    volatile uint8_t fault_status;        /**< Fault status bits for this port. */
+    bool is_vbus_on;                      /**< Is supplying VBUS flag. */
+    bool is_vconn_on;                     /**< Is supplying VCONN flag. */
+    bool vdm_retry_pending;               /**< Whether VDM retry on timeout is pending. */
+    bool psrc_rising;                     /**< Voltage ramp up/down. */
+    cy_pdstack_vdm_resp_cbk_t vdm_resp_cbk;          /**< VDM response handler callback. */
+    bool is_vdm_pending;                  /**< VDM handling flag for MUX callback. */
+    uint8_t app_pending_swaps;            /**< Variable denoting the types of swap operation that are pending. */
+    uint8_t actv_swap_type;               /**< Denotes the active Swap operation. */
+    uint8_t actv_swap_count;              /**< Denotes number of active swap attempts completed. */
+    uint16_t actv_swap_delay;             /**< Delay to be applied between repeated swap attempts. */
+    bool debug_acc_attached;              /**< Debug accessory attach status */
+    uint8_t vdm_minor_version;            /**< Live VDM minor version. */
+    uint8_t vdm_task_en;                  /**< Flag to indicate is vdm task manager enabled. */
+    bool alt_mode_entered;                /**< Alternate modes currently entered. */
 } app_status_t;
 
 /**
@@ -501,5 +516,7 @@ void pd_brown_out_fault_handler(void *callbackContext, bool state);
  */
 void pd_vreg_inrush_det_fault_handler(void *callbackContext, bool state);
 #endif /* _APP_H_ */
+
+bool send_src_info (struct cy_stc_pdstack_context *ptrPdStackContext);
 
 /* End of File */

@@ -49,9 +49,21 @@
 #define APP_PD_SWAP_RESP_NOT_SUPP       (3u)
 
 /* Configure the Swap Responses. Should be REJECT for USBPD Sink-UFP Example */
-volatile uint8_t pr_swap_response = APP_PD_SWAP_RESP_NOT_SUPP;
-volatile uint8_t dr_swap_response = APP_PD_SWAP_RESP_NOT_SUPP;
-volatile uint8_t vconn_swap_response = APP_PD_SWAP_RESP_NOT_SUPP;
+//volatile uint8_t pr_swap_response = APP_PD_SWAP_RESP_NOT_SUPP;
+//volatile uint8_t dr_swap_response = APP_PD_SWAP_RESP_NOT_SUPP;
+//volatile uint8_t vconn_swap_response = APP_PD_SWAP_RESP_NOT_SUPP;
+
+volatile uint8_t pr_swap_response[NO_OF_TYPEC_PORTS] = {
+    APP_PD_SWAP_RESP_ACCEPT
+};
+
+volatile uint8_t dr_swap_response[NO_OF_TYPEC_PORTS] = {
+    APP_PD_SWAP_RESP_ACCEPT
+};
+
+volatile uint8_t vconn_swap_response[NO_OF_TYPEC_PORTS] = {
+    APP_PD_SWAP_RESP_ACCEPT
+};
 
 static cy_en_pdstack_app_req_status_t get_response(cy_stc_pdstack_context_t * context, uint8_t raw_resp)
 {
@@ -101,7 +113,7 @@ void eval_dr_swap (cy_stc_pdstack_context_t * context, cy_pdstack_app_resp_cbk_t
     }
     else
     {
-        result = get_response(context, dr_swap_response);
+        result = get_response(context, dr_swap_response[context->port]);
     }
 
     app_get_resp_buf(context->port)->reqStatus = result;
@@ -113,16 +125,16 @@ void eval_pr_swap (cy_stc_pdstack_context_t * context, cy_pdstack_app_resp_cbk_t
     cy_en_pdstack_app_req_status_t result = CY_PDSTACK_REQ_REJECT;
 
 #if ((!CY_PD_SINK_ONLY) && (!CY_PD_SOURCE_ONLY))
-    const dpm_status_t* dpm = dpm_get_info(context->port);
+    const cy_stc_pdstack_dpm_status_t* dpm = &context->dpmStat;
     uint8_t pdo_mask;
 
-    if(dpm->curPortRole == PRT_ROLE_SOURCE)
+    if(context->dpmConfig.curPortRole == CY_PD_PRT_ROLE_SOURCE)
     {
-        pdo_mask = dpm->srcPdoMask;
+        pdo_mask = dpm->srcPdoFlags[0];
     }
     else
     {
-        pdo_mask = dpm->snkPdoMask;
+        pdo_mask = dpm->snkPdoFlags[0];
     }
 
     /*
@@ -131,27 +143,38 @@ void eval_pr_swap (cy_stc_pdstack_context_t * context, cy_pdstack_app_resp_cbk_t
      */
 #if CY_PD_REV3_ENABLE
     if (
-            (dpm->specRevSopLive >= PD_REV3) &&
-            (dpm->portRole != PRT_DUAL)
+            (context->dpmConfig.specRevSopLive >= CY_PD_REV3) &&
+            (dpm->portRole != CY_PD_PRT_DUAL)
        )
     {
-        result = REQ_NOT_SUPPORTED;
+        result = CY_PDSTACK_REQ_NOT_SUPPORTED;
     }
 #endif /* CY_PD_REV3_ENABLE */
 
-    if (
-            (dpm->deadBat == false) && (dpm->portRole == PRT_DUAL) &&
-            (
-             ((pdo_mask & (0x1 << PD_EXTERNALLY_POWERED_BIT_POS)) == 0) ||
-             (dpm->curPortRole == PRT_ROLE_SINK) ||
-             (PD_GET_PTR_HOST_CFG_TBL(context->port)->ext_powered_prs != 0)
-            )
-       )
+#if (POWER_ROLE_PREFERENCE_ENABLE)
+    /* Do not allow PR_SWAP to a non-preferred role. */
+    if (app_pref_power_role[context->port] != context->dpmConfig.curPortRole)
+#endif /* (POWER_ROLE_PREFERENCE_ENABLE) */
     {
-        result = get_response(context->port, pr_swap_response);
+        if (
+                (dpm->deadBat == false) && (dpm->portRole == CY_PD_PRT_DUAL) &&
+                (
+                 ((pdo_mask & (0x1 << CY_PD_EXTERNALLY_POWERED_BIT_POS)) == 0) ||
+                 (context->dpmConfig.curPortRole == CY_PD_PRT_ROLE_SINK)
+                )
+           )
+        {
+            result = get_response(context, pr_swap_response[context->port]);
+        }
     }
+#if (POWER_ROLE_PREFERENCE_ENABLE)
+    else
+    {
+        result = CY_PDSTACK_REQ_REJECT;
+    }
+#endif /* (POWER_ROLE_PREFERENCE_ENABLE) */
 
-#else /* (CY_PD_SINK_ONLY || CY_PD_SOURCE_ONLY) */
+#else
 
     if (context->dpmConfig.specRevSopLive >= CY_PD_REV3)
     {
@@ -181,7 +204,7 @@ void eval_vconn_swap (cy_stc_pdstack_context_t * context, cy_pdstack_app_resp_cb
     }
     else
     {
-        result = get_response(context, vconn_swap_response);
+        result = get_response(context, vconn_swap_response[context->port]);
 
         if (result == CY_PDSTACK_REQ_ACCEPT)
         {
@@ -203,10 +226,11 @@ void eval_vconn_swap (cy_stc_pdstack_context_t * context, cy_pdstack_app_resp_cb
 #if ((!CY_PD_SOURCE_ONLY) && (!CY_PD_SINK_ONLY))
 #if CY_PD_REV3_ENABLE
 
-void eval_fr_swap (cy_stc_pdstack_context_t context, cy_pdstack_app_resp_cbk_t app_resp_handler)
+void eval_fr_swap (cy_stc_pdstack_context_t* context, cy_pdstack_app_resp_cbk_t app_resp_handler)
 {
     /* Always accept, FRS message will only be received if we have previously initiated a FRS signal. */
-    app_req_status_t result = CY_PDSTACK_REQ_ACCEPT;
+    //app_req_status_t result = CY_PDSTACK_REQ_ACCEPT;
+    cy_en_pdstack_app_req_status_t result = CY_PDSTACK_REQ_ACCEPT;
 
     app_get_resp_buf(context->port)->reqStatus = result;
     app_resp_handler(context, app_get_resp_buf(context->port));

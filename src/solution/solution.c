@@ -114,6 +114,78 @@ static uint32_t update_current_limit(cy_stc_pdstack_context_t *ptrPdStackContext
     return ((current_limit * CSA_IDEAL_RSENSE) / ptrPdStackContext->ptrUsbPdContext->vbusCsaRsense);
 }
 
+#if VBUS_SRC_HV_PWM_SLEW_RATE_ENABLE
+/* PWM interrupt handler to control vPosSlewRate of SRC-mode Buck controller (for VBUS 5V -> 9V transfer) */
+void pwm_intr_handler(void)
+{
+
+    /* Get all the enabled PWM pending interrupts */
+    uint32_t interrupts = Cy_TCPWM_GetInterruptStatusMasked(CYBSP_PWM_HW, CYBSP_PWM_NUM);
+
+    uint32_t compare_val = Cy_TCPWM_PWM_GetCompare0(CYBSP_PWM_HW, CYBSP_PWM_NUM);
+
+    compare_val += PWM_DUTY_CYCLE_INCREMENT;
+
+    /* Calling this API function overwrites the default compare value stored in the TCPWM configuration structure */
+    Cy_TCPWM_PWM_SetCompare0(CYBSP_PWM_HW, CYBSP_PWM_NUM, compare_val);
+
+    /* Clear the interrupt */
+    Cy_TCPWM_ClearInterrupt(CYBSP_PWM_HW, CYBSP_PWM_NUM, interrupts);
+
+    NVIC_ClearPendingIRQ(CYBSP_PWM_IRQ);
+
+    /* Stop PWM after 48 duty cycle increments (480uS) */
+    if(compare_val > PWM_PERIOD)
+    {
+        /* Disable the interrupt. */
+        NVIC_DisableIRQ(CYBSP_PWM_IRQ);
+
+        /* Configure pin as GPIO and set it HIGH */
+        Cy_GPIO_Pin_FastInit(SOURCE_OUTPUT_V_SELECT_PORT, SOURCE_OUTPUT_V_SELECT_PIN, CY_GPIO_DM_STRONG,
+            true, HSIOM_SEL_GPIO);
+
+        /* Disable the TCPWM as PWM */
+        Cy_TCPWM_PWM_Disable(CYBSP_PWM_HW, CYBSP_PWM_NUM);
+    }
+}
+
+/* Initializes PWM to control vPosSlewRate of SRC-mode Buck controller (for VBUS 5V -> 9V transfer) */
+void vsel_pwm_init(cy_stc_pdstack_context_t* ptrPdStackContext)
+{
+    /* Configure the PWM interrupt. */
+    const cy_stc_sysint_t CYBSP_PWM_IrqConfig =
+    {
+        .intrSrc = (IRQn_Type)CYBSP_PWM_IRQ,
+        .intrPriority = 0UL,
+    };
+
+    /* Initialize PWM using the configuration structure generated using device configurator */
+    if (CY_TCPWM_SUCCESS != Cy_TCPWM_PWM_Init(CYBSP_PWM_HW, CYBSP_PWM_NUM, &CYBSP_PWM_config))
+    {
+        /* Error handling */
+        CY_ASSERT(0);
+    }
+
+    /* Configure pin as PWM output and set it LOW */
+    Cy_GPIO_Pin_FastInit(SOURCE_OUTPUT_V_SELECT_PORT, SOURCE_OUTPUT_V_SELECT_PIN, CY_GPIO_DM_STRONG,
+                        false, P2_1_TCPWM_LINE6);
+
+    /* Configure the interrupt with vector at PWM_Isr(). */
+    if (CY_SYSINT_SUCCESS != Cy_SysInt_Init(&CYBSP_PWM_IrqConfig, pwm_intr_handler))
+    {
+        /* insert error handling here */
+    }
+
+    /* Enable the interrupt. */
+    NVIC_EnableIRQ(CYBSP_PWM_IrqConfig.intrSrc);
+
+    /* Enable the TCPWM as PWM */
+    Cy_TCPWM_PWM_Enable(CYBSP_PWM_HW, CYBSP_PWM_NUM);
+
+    /* Start the PWM */
+    Cy_TCPWM_TriggerReloadOrIndex(CYBSP_PWM_HW, CYBSP_PWM_MASK);
+}
+#endif
 void timer_minute_tick_cb(cy_timer_id_t id, void * callbackCtx)
 {
     (void)id;
@@ -1187,4 +1259,63 @@ static void sln_ibtr_cb(void * callbackCtx, bool value)
     (void)callbackCtx;
 #endif /* BAT_HW_OCP_ENABLE */
 }
+
+void sol_batt_src_dis(cy_stc_pdstack_context_t * context)
+{
+#if VREG_BROWN_OUT_DET_ENABLE
+    sol_brown_out_control(context, false);
+#endif /* VREG_BROWN_OUT_DET_ENABLE*/
+#if VBUS_SRC_OCP_PIN_ENABLE
+    /* disable ocp interrupt */
+    NVIC_DisableIRQ(ocp_det_intr_config.intrSrc);
+    NVIC_ClearPendingIRQ(ocp_det_intr_config.intrSrc);
+    Cy_GPIO_ClearInterrupt(LOAD_SWITCH_EN_H_PORT, LOAD_SWITCH_EN_H_PIN);
+#endif /* VBUS_SRC_OCP_PIN_ENABLE */
+    Cy_GPIO_Write(LOAD_SWITCH_EN_H_PORT,LOAD_SWITCH_EN_H_PIN, false);
+    Cy_GPIO_Write(SOURCE_BUCK_EN_H_PORT, SOURCE_BUCK_EN_H_PIN, false);
+#if DEBUG_UART_ENABLE
+    debug_print("\n >> SRC DIS ");
+#endif
+}
+
+void sol_batt_src_en(cy_stc_pdstack_context_t * context)
+{
+    Cy_GPIO_Write(SOURCE_BUCK_EN_H_PORT, SOURCE_BUCK_EN_H_PIN, true);
+
+    Cy_GPIO_SetDrivemode(LOAD_SWITCH_EN_H_PORT, LOAD_SWITCH_EN_H_PIN, CY_GPIO_DM_OD_DRIVESLOW_IN_OFF);
+    Cy_GPIO_Write(LOAD_SWITCH_EN_H_PORT, LOAD_SWITCH_EN_H_PIN, true);
+#if VBUS_SRC_OCP_PIN_ENABLE
+    /* configure and enable pin interrupt */
+    Cy_SysInt_Init(&ocp_det_intr_config, &ocp_pin_handler);
+    NVIC_ClearPendingIRQ(ocp_det_intr_config.intrSrc);
+    Cy_GPIO_ClearInterrupt(LOAD_SWITCH_EN_H_PORT, LOAD_SWITCH_EN_H_PIN);
+    NVIC_EnableIRQ(ocp_det_intr_config.intrSrc);
+#endif /* VBUS_SRC_OCP_PIN_ENABLE */
+#if DEBUG_UART_ENABLE
+    debug_print("\n >> SRC ENA ");
+#endif
+}
+
+/* Procedure set VBUS voltage level for SRC-mode Buck controller (uses PWM for VBUS 5V -> 9V transfer) */
+void sol_batt_src_set_volt(cy_stc_pdstack_context_t * context, uint16_t volt_mV)
+{
+#if DEBUG_UART_ENABLE
+    debug_print("\n >> SRC SET VOLT ");
+#endif
+    if(volt_mV == CY_PD_VSAFE_9V)
+    {
+#if VBUS_SRC_HV_PWM_SLEW_RATE_ENABLE
+        /* VSEL PWM initialization and enable */
+        vsel_pwm_init(context);
+#else
+        Cy_GPIO_Write(SOURCE_OUTPUT_V_SELECT_PORT, SOURCE_OUTPUT_V_SELECT_PIN, true);
+#endif
+    }
+    else
+    {
+        Cy_GPIO_Write(SOURCE_OUTPUT_V_SELECT_PORT, SOURCE_OUTPUT_V_SELECT_PIN, false);
+    }
+}
+
+
 /* [] END OF FILE */

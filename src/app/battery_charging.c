@@ -42,6 +42,8 @@
 #if (CY_PD_SINK_ONLY)
 #include "psink.h"
 #endif /* CY_PD_SINK_ONLY */
+#include "psink.h"
+#include "psource.h"
 #include  "cy_pdutils_sw_timer.h"
 #include "app.h"
 #include "cy_pdstack_common.h"
@@ -114,6 +116,13 @@ static const uint16_t apple_id_to_cur_map[] = {
 };
 #endif /* (!APPLE_SOURCE_DISABLE) */
 #endif /* (!PMG1B1_USB_CHARGER) */
+
+static const uint16_t apple_id_to_cur_map[] = {
+    APPLE_AMP_1A,
+    APPLE_AMP_2_1A,
+    APPLE_AMP_2_4A,
+    APPLE_AMP_3A    
+};
 
 /* Battery Charger Configuration structure*/
 bc_status_t gl_bc_status[NO_OF_BC_PORTS];
@@ -306,7 +315,7 @@ static void bc_tmr_cbk(cy_timer_id_t id, void * callbackCtx)
     }
 }
 
-#if (!PMG1B1_USB_CHARGER)
+#if (PMG1B1_USB_CHARGER)
 static void bc_pwr_ready_cbk(cy_stc_pdstack_context_t *ptrPdStackContext)
 {
 #if (!QC_SRC_AFC_CHARGING_DISABLED)
@@ -1361,7 +1370,7 @@ static void bc_eval_apple_brick_id(cy_stc_pdstack_context_t * context, bc_apple_
             bc_stat-> connected = true;
             bc_stat->cur_amp = APPLE_AMP_2_4A;
 #endif
-             psnk_set_current (context, APPLE_AMP_2_4A);
+            psnk_set_current (context, APPLE_AMP_2_4A);
             break;
 
         default:

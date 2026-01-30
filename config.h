@@ -47,7 +47,7 @@
 #include "solution.h"
 
 /* P3.0 used as Debug UART,TX. J7.7 shall be connected to J3.8  */
-#define DEBUG_UART_ENABLE                           (0u)
+#define DEBUG_UART_ENABLE                           (1u)
 
 #if DEBUG_UART_ENABLE
 #include <stdio.h>
@@ -60,10 +60,10 @@ extern char temp[];
 #if DEBUG_UART_ENABLE
 
 #define DEBUG_BATT_INFO_ENABLE                      (1u)
-#define DEBUG_BATT_CELL_INFO_ENABLE                 (0u)
-#define DEBUG_PWR_INFO_ENABLE                       (0u)
+#define DEBUG_BATT_CELL_INFO_ENABLE                 (1u)
+#define DEBUG_PWR_INFO_ENABLE                       (1u)
 #define DEBUG_TEMP_INFO_ENABLE                      (1u)
-#define SIMULATE_ERROR                              (0u)
+#define SIMULATE_ERROR                              (1u)
 #define DEBUG_PRINT(string)                         \
 {                                                   \
     sprintf(temp,string);                           \
@@ -172,7 +172,7 @@ extern char temp[];
 #define BATT_PER_CELL_HYSTERSIS_TSH                 (100u)
 
 /* Total battery cell count */
-#define TOTAL_BATTERY_CELL_COUNT                    (5u)
+#define TOTAL_BATTERY_CELL_COUNT                    (4u)
 
 /* Battery Recharging Hysteresis in mV */
 #define TOTAL_VBATT_RECHARGE_THRESH                 (BATT_PER_CELL_RECHARGE_VOLT * TOTAL_BATTERY_CELL_COUNT)
@@ -203,7 +203,7 @@ extern char temp[];
  * Max allowed value is 650u (6.5A) if Rsense = 5 mOhm
  * or 320u (3.2A) if Rsense = 10 mOhm
  */
-#define VBAT_INPUT_CURR_MAX_SETTING                 (200u)
+#define VBAT_INPUT_CURR_MAX_SETTING                 (200u) /* was 500u */
 
 /* min current to pre-charge the battery in 10mA units (for Rsense = 5 mOhm).
  * Limited by HW.
@@ -339,8 +339,58 @@ extern char temp[];
 /*******************************************************************************
  * Power Source (PSOURCE) Configuration.
  ******************************************************************************/
+#define APP_VBUS_SET_VOLT_P1(context, volt_mV)      sol_batt_src_set_volt(context, volt_mV)
+
+/* Enable PWM to control vPosSlewRate of SRC-mode Buck controller (for VBUS 5V -> 9V transfer) */
+#define VBUS_SRC_HV_PWM_SLEW_RATE_ENABLE            (1u)
+
+#if VBUS_SRC_HV_PWM_SLEW_RATE_ENABLE
+/* Set increment value for PWM duty cycle in PWM clocks */
+#define PWM_DUTY_CYCLE_INCREMENT                    (10u)
+/* Set the PWM period in count value in the range: 0 - 65535. Maximum value 65535 corresponds to 1 full round of count. */
+#define PWM_PERIOD                                  (uint16_t)(480)
+#endif
+
+
+/* Time (in ms) allowed for source voltage to become valid. */
+#define APP_PSOURCE_EN_TIMER_PERIOD             (250u)
+
+/* Period (in ms) of VBus validity checks after enabling the power source. */
+#define APP_PSOURCE_EN_MONITOR_TIMER_PERIOD     (1u)
+
+/* Time (in ms) between VBus valid and triggering of PS_RDY. */
+#define APP_PSOURCE_EN_HYS_TIMER_PERIOD         (5u)
+
+/* Time (in ms) for which the VBus_Discharge path will be enabled when turning power source OFF. */
+#define APP_PSOURCE_DIS_TIMER_PERIOD            (600u)
+
+/* Period (in ms) of VBus drop to VSAFE0 checks after power source is turned OFF. */
+#define APP_PSOURCE_DIS_MONITOR_TIMER_PERIOD    (1u)
+
 /* VBus Monitoring is done using internal resistor divider. */
-#define VBUS_MON_INTERNAL                           (1u)
+#define VBUS_MON_INTERNAL                       (1u)
+
+/* Period in ms for turning on VBus FET. */
+#define APP_VBUS_FET_ON_TIMER_PERIOD           (5u)
+
+/* Period in ms for turning off VBus FET. */
+#define APP_VBUS_FET_OFF_TIMER_PERIOD           (1u)
+
+/*******************************************************************************
+ * VBus monitor configuration.
+ ******************************************************************************/
+
+/* Allowed VBus valid margin as percentage of expected voltage. */
+#define VBUS_TURN_ON_MARGIN                     (-20)
+
+/* Allowed VBus valid margin (as percentage of expected voltage) before detach detection is triggered. */
+#define VBUS_TURN_OFF_MARGIN                    (-20)
+
+/* Allowed margin over expected voltage (as percentage) for negative VBus voltage transitions. */
+#define VBUS_DISCHARGE_MARGIN                   (20)
+
+/* Allowed margin over 5V before the provider FET is turned OFF when discharging to VSAFE0. */
+#define VBUS_DISCHARGE_TO_5V_MARGIN             (10)
 
 /*******************************************************************************
  * System fault configuration features.
@@ -376,11 +426,15 @@ extern char temp[];
 
 #endif /* FAULT_INFINITE_RECOVERY_EN */
 
+/*
+ * Disable PMG1 device reset on error (watchdog expiry or hard fault).
+ * NOTE: Enabling this feature can cause unexpected device reset during SWD debug sessions.
+ */
+#define RESET_ON_ERROR_ENABLE (0u)
+
 /* Enable watchdog hardware reset for CPU lock-up recovery */
 #define WATCHDOG_HARDWARE_RESET_ENABLE              (1u)
 
-/* Disable device reset on error (watchdog expiry or hard fault). */
-#define RESET_ON_ERROR_ENABLE                       (1u)
 
 /*
  * Watchdog reset period in ms. This should be set to a value greater than
@@ -390,6 +444,12 @@ extern char temp[];
 
 /* Enable tracking of maximum stack usage. */
 #define STACK_USAGE_CHECK_ENABLE                    (0u)
+
+/*
+ * Set this to 1 to Shutdown the SNK FET in the application layer in states where power consumption needs to be
+ * reduced to standby level.
+ */
+#define SNK_STANDBY_FET_SHUTDOWN_ENABLE (0u)
 
 /*
  * The LED toggle period (ms) to be used when Type-C connection hasn't been detected.
@@ -425,6 +485,14 @@ extern char temp[];
  * message in solution space.
  */
 #define CCG_SLN_EXTN_MSG_HANDLER_ENABLE             (1u)
+
+/** Timer period in ms for providing delay for VConn Gate Pull Up enable. */
+#define APP_VCONN_TURN_ON_DELAY_PERIOD              (1u)
+
+/***********************************************************************************/
+/* Enable selection of data/power role preference. */
+#define ROLE_PREFERENCE_ENABLE                      (0u)
+#define POWER_ROLE_PREFERENCE_ENABLE                (0u)
 
 /*******************************************************************************
  * Get Battery status and Get Battery configuration response configuration

@@ -59,6 +59,10 @@
 #include "cy_usbpd_buck_boost.h"
 #include "mtbcfg_ezpd.h"
 
+#if (!CY_PD_SINK_ONLY)
+#include "psource.h"
+#endif  /* (!CY_PD_SINK_ONLY) */
+
 #if (TEMPERATURE_SENSOR_COUNT != 0u)
 #include "thermistor.h"
 #endif /* (TEMPERATURE_SENSOR_COUNT != 0u) */
@@ -293,25 +297,47 @@ cy_stc_pd_dpm_config_t *get_dpm_connect_stat(void)
 const cy_stc_pdstack_app_cbk_t app_callback =
 {
     app_event_handler,
+#if (!CY_PD_SINK_ONLY)
+    psrc_set_voltage,
+    psrc_set_current,
+    psrc_enable,
+    psrc_disable,
+#endif  /* (!CY_PD_SINK_ONLY) */
     vconn_enable,
     vconn_disable,
     vconn_is_present,
     vbus_is_present,
     vbus_discharge_on,
     vbus_discharge_off,
+#if (!(CY_PD_SOURCE_ONLY))
     psnk_set_voltage,
     psnk_set_current,
     psnk_enable,
     psnk_disable,
     eval_src_cap,
+#endif /* (!(CY_PD_SOURCE_ONLY)) */
+#if (!CY_PD_SINK_ONLY)
+    eval_rdo,
+#endif  /* (!CY_PD_SINK_ONLY) */
     eval_dr_swap,
     eval_pr_swap,
     eval_vconn_swap,
     eval_vdm,
-   vbus_get_value,
+#if CY_PD_REV3_ENABLE
+#if ((!(CY_PD_SOURCE_ONLY)) && (!CY_PD_SINK_ONLY))
+    eval_fr_swap,
+#endif /* ((!(CY_PD_SOURCE_ONLY)) && (!CY_PD_SINK_ONLY))  */
+#endif /* CY_PD_REV3_ENABLE */
+    vbus_get_value,
+#if (!CY_PD_SINK_ONLY)
+    psrc_get_voltage,
+#endif  /* (!CY_PD_SINK_ONLY) */
 #if CY_PD_USB4_SUPPORT_ENABLE
-        NULL,
+    eval_enter_usb,
 #endif /* CY_PD_USB4_SUPPORT_ENABLE */
+#if (!CY_PD_SINK_ONLY)
+    send_src_info
+#endif /* (!CY_PD_SINK_ONLY) */
 };
 #if (TEMPERATURE_SENSOR_COUNT != 0u)
 /* Array to map the thermal voltage read by thermistor to corresponding temperature */

@@ -41,6 +41,7 @@
 #define _SOLUTION_TASKS_H_
 
 #include <stdbool.h>
+#include "cy_pdstack_common.h"
 
 /* Enumeration for battery Pack ID */
 typedef enum
