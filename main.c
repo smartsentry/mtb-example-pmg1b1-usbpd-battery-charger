@@ -311,14 +311,17 @@ static void switch_interrupt_handler(void)
         cy_stc_battery_status_t* batt_stat = &(ptrBatteryChargingContext->batteryStatus);
         if(batt_stat->curr_batt_volt > BATTERY_VOLTAGE_THRESHOLD_MV)
         {
-            printf("Battery voltage OK\r\n");
-            /* Turn On the power. */
+            sprintf(temp, "Battery voltage OK\r\n");
+            debug_print( temp);
+             /* Turn On the power. */
             Cy_GPIO_Set(P1_3_12V_EN_PORT, P1_3_12V_EN_PIN);
 
         }
         else
         {
-            printf("Battery voltage too LOW\r\n");
+            sprintf(temp, "Battery voltage too LOW\r\n");
+            debug_print( temp);
+                
 
         }
     
@@ -605,11 +608,12 @@ int main(void)
 
         cy_stc_battery_charging_context_t* ptrBatteryChargingContext = get_battery_charging_context(0);
         cy_stc_battery_status_t* batt_stat = &(ptrBatteryChargingContext->batteryStatus);
-        printf("CSTEST Batt volt: %d mV, Curr: %d mA, OCP fault: %d\r\n", batt_stat->curr_batt_volt, batt_stat->curr_batt_curr, batt_stat->batt_ocp_fault_active);
-
+        sprintf(temp, "CSTEST Batt volt: %d mV, Curr: %d mA, OCP fault: %d\r\n", batt_stat->curr_batt_volt, batt_stat->curr_batt_curr, batt_stat->batt_ocp_fault_active);
+        debug_print( temp);
         if(batt_stat->curr_batt_volt < BATTERY_VOLTAGE_THRESHOLD_MV)
         {
-            printf("Battery voltage too low\r\n");
+            sprintf(temp, "Battery voltage too low\r\n");
+            debug_print( temp);
             /* Turn Off the power. */
             Cy_GPIO_Clr(P1_3_12V_EN_PORT, P1_3_12V_EN_PIN);
 
