@@ -76,6 +76,8 @@
 char temp[80];
 #endif
 
+#define BATTERY_VOLTAGE_THRESHOLD_MV 11000
+
 cy_stc_pdutils_sw_timer_t gl_TimerCtx;
 cy_stc_usbpd_context_t gl_UsbPdPort0Ctx;
 
@@ -150,6 +152,18 @@ const cy_stc_sysint_t usbpd_port0_intr0_config =
 const cy_stc_sysint_t usbpd_port0_intr1_config =
 {
     .intrSrc = (IRQn_Type)mtb_usbpd_port0_DS_IRQ,
+    .intrPriority = 0U,
+};
+
+const cy_stc_sysint_t p1_4_car_en_intr_config =
+{
+    .intrSrc = (IRQn_Type)P1_4_CAR_EN_IRQ,
+    .intrPriority = 0U,
+};
+
+const cy_stc_sysint_t user_switch_intr_config =
+{
+    .intrSrc = (IRQn_Type)USER_SWITCH_IRQ,
     .intrPriority = 0U,
 };
 
@@ -285,6 +299,32 @@ static void cy_usbpd0_intr1_handler(void)
     Cy_USBPD_Intr1Handler(&gl_UsbPdPort0Ctx);
 }
 
+static void car_en_interrupt_handler(void)
+{
+    Cy_GPIO_Clr(P1_3_12V_EN_PORT, P1_3_12V_EN_PIN);
+    Cy_GPIO_ClearInterrupt(P1_4_CAR_EN_PORT, P1_4_CAR_EN_PIN);
+}
+
+static void switch_interrupt_handler(void)
+{
+        cy_stc_battery_charging_context_t* ptrBatteryChargingContext = get_battery_charging_context(0);
+        cy_stc_battery_status_t* batt_stat = &(ptrBatteryChargingContext->batteryStatus);
+        if(batt_stat->curr_batt_volt > BATTERY_VOLTAGE_THRESHOLD_MV)
+        {
+            printf("Battery voltage OK\r\n");
+            /* Turn On the power. */
+            Cy_GPIO_Set(P1_3_12V_EN_PORT, P1_3_12V_EN_PIN);
+
+        }
+        else
+        {
+            printf("Battery voltage too LOW\r\n");
+
+        }
+    
+    Cy_GPIO_ClearInterrupt(USER_SWITCH_PORT, USER_SWITCH_PIN);
+}
+
 cy_stc_pd_dpm_config_t *get_dpm_connect_stat(void)
 {
     return &(gl_PdStackPort0Ctx.dpmConfig);
@@ -387,7 +427,7 @@ void led_timer_cb(
         if (stack_ctx->dpmConfig.curPortRole == CY_PD_PRT_ROLE_SOURCE)
         {
             /* Turn ON the User LED. */
-            Cy_GPIO_Clr(USER_STATUS_LED_PORT, USER_STATUS_LED_PIN);
+            Cy_GPIO_Set(USER_STATUS_LED_PORT, USER_STATUS_LED_PIN);
         }
         else
         {
@@ -398,7 +438,7 @@ void led_timer_cb(
     else
     {
         /* Turn OFF the User LED. */
-        Cy_GPIO_Set(USER_STATUS_LED_PORT, USER_STATUS_LED_PIN);
+        Cy_GPIO_Clr(USER_STATUS_LED_PORT, USER_STATUS_LED_PIN);
     }
 
     Cy_PdUtils_SwTimer_Start (&gl_TimerCtx, callbackContext, id, gl_LedBlinkRate, led_timer_cb);
@@ -481,6 +521,18 @@ int main(void)
     Cy_SysInt_Init(&usbpd_port0_intr1_config, &cy_usbpd0_intr1_handler);
     NVIC_EnableIRQ(usbpd_port0_intr1_config.intrSrc);
 
+    /* Configure and enable interrupt for P1_4_CAR_EN. */
+    Cy_SysInt_Init(&p1_4_car_en_intr_config, &car_en_interrupt_handler);
+    NVIC_ClearPendingIRQ(p1_4_car_en_intr_config.intrSrc);
+    Cy_GPIO_ClearInterrupt(P1_4_CAR_EN_PORT, P1_4_CAR_EN_PIN);
+    NVIC_EnableIRQ(p1_4_car_en_intr_config.intrSrc);
+
+    /* Configure and enable interrupt for USER_SWITCH. */
+    Cy_SysInt_Init(&user_switch_intr_config, &switch_interrupt_handler);
+    NVIC_ClearPendingIRQ(user_switch_intr_config.intrSrc);
+    Cy_GPIO_ClearInterrupt(USER_SWITCH_PORT, USER_SWITCH_PIN);
+    NVIC_EnableIRQ(user_switch_intr_config.intrSrc);
+
     /* Init Auto Config param. Only max_current field is used by PDL to set CSA TRIMS and CC_GAIN.  */
     mtb_usbpd_port0_config.autoConfig = &usbpd_port0_auto_config;
     /* Initialize the USBPD driver */
@@ -550,6 +602,24 @@ int main(void)
 
         /* Perform tasks associated with instrumentation. */
         instrumentation_task();
+
+        cy_stc_battery_charging_context_t* ptrBatteryChargingContext = get_battery_charging_context(0);
+        cy_stc_battery_status_t* batt_stat = &(ptrBatteryChargingContext->batteryStatus);
+        printf("CSTEST Batt volt: %d mV, Curr: %d mA, OCP fault: %d\r\n", batt_stat->curr_batt_volt, batt_stat->curr_batt_curr, batt_stat->batt_ocp_fault_active);
+
+        if(batt_stat->curr_batt_volt < BATTERY_VOLTAGE_THRESHOLD_MV)
+        {
+            printf("Battery voltage too low\r\n");
+            /* Turn Off the power. */
+            Cy_GPIO_Clr(P1_3_12V_EN_PORT, P1_3_12V_EN_PIN);
+
+        }
+        // else
+        // {
+        //     /* Turn On the power. */
+        //     Cy_GPIO_Set(P1_3_12V_EN_PORT, P1_3_12V_EN_PIN);
+        // }
+        
 
 #if SYS_DEEPSLEEP_ENABLE
        if(gl_PdStackPort0Ctx.dpmConfig.connect
