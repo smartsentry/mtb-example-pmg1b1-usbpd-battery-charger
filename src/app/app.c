@@ -52,6 +52,8 @@
 #include "cy_pdutils_sw_timer.h"
 #include "cy_pdstack_timer_id.h"
 #include "cy_gpio.h"
+#include "cy_scb_uart.h"
+#include "cycfg_peripherals.h"
 
 #if BATTERY_CHARGING_ENABLE
 #include <battery_charging.h>
@@ -536,6 +538,14 @@ bool system_sleep(cy_stc_pdstack_context_t *ptrPdStackContext, cy_stc_pdstack_co
 #if PMG1_PD_DUALPORT_ENABLE
             Cy_USBPD_SetReference(ptrPdStack1Context->ptrUsbPdContext, true);
 #endif /* PMG1_PD_DUALPORT_ENABLE */
+
+#if DEBUG_UART_ENABLE
+            /* Wait for UART TX FIFO to be flushed before entering deep sleep. */
+            while (Cy_SCB_UART_GetNumInTxFifo(UART_HW) > 0u)
+            {
+                /* Busy wait */
+            }
+#endif /* DEBUG_UART_ENABLE */
 
             /* Device sleep entry. */
             Cy_SysPm_CpuEnterDeepSleep();

@@ -608,15 +608,18 @@ int main(void)
 
         cy_stc_battery_charging_context_t* ptrBatteryChargingContext = get_battery_charging_context(0);
         cy_stc_battery_status_t* batt_stat = &(ptrBatteryChargingContext->batteryStatus);
-        sprintf(temp, "CSTEST Batt volt: %d mV, Curr: %d mA, OCP fault: %d\r\n", batt_stat->curr_batt_volt, batt_stat->curr_batt_curr, batt_stat->batt_ocp_fault_active);
-        debug_print( temp);
+        // sprintf(temp, "CSTEST Batt volt: %d mV, Curr: %d mA, OCP fault: %d\r\n", batt_stat->curr_batt_volt, batt_stat->curr_batt_curr, batt_stat->batt_ocp_fault_active);
+        // debug_print( temp);
         if(batt_stat->curr_batt_volt < BATTERY_VOLTAGE_THRESHOLD_MV)
         {
-            sprintf(temp, "Battery voltage too low\r\n");
-            debug_print( temp);
-            /* Turn Off the power. */
-            Cy_GPIO_Clr(P1_3_12V_EN_PORT, P1_3_12V_EN_PIN);
-
+            /* Only turn off power if it's currently on. */
+            if(Cy_GPIO_Read(P1_3_12V_EN_PORT, P1_3_12V_EN_PIN))
+            {
+                sprintf(temp, "Battery voltage too low\r\n");
+                debug_print( temp);
+                /* Turn Off the power. */
+                Cy_GPIO_Clr(P1_3_12V_EN_PORT, P1_3_12V_EN_PIN);
+            }
         }
         // else
         // {
