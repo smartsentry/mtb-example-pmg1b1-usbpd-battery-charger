@@ -63,7 +63,9 @@ extern char temp[];
 #define DEBUG_BATT_CELL_INFO_ENABLE                 (1u)
 #define DEBUG_PWR_INFO_ENABLE                       (1u)
 #define DEBUG_TEMP_INFO_ENABLE                      (1u)
-#define SIMULATE_ERROR                              (1u)
+
+#define SIMULATE_ERROR                              (0u)
+
 #define DEBUG_PRINT(string)                         \
 {                                                   \
     sprintf(temp,string);                           \
@@ -157,7 +159,7 @@ extern char temp[];
 #define BATT_PER_CELL_DISCHARGED_VOLT_SNK           (3000u)
 
 /* Completely discharged battery cell voltage per cell in mV/SRC */
-#define BATT_PER_CELL_DISCHARGED_VOLT_SRC           (3100u)
+#define BATT_PER_CELL_DISCHARGED_VOLT_SRC           (2800u)
 
 /* Battery cell Recharge voltage per cell in mV */
 #define BATT_PER_CELL_RECHARGE_VOLT                 (4000u)
@@ -195,8 +197,39 @@ extern char temp[];
 /* Total voltage of completely discharged Battery/SNK role */
 #define TOTAL_VBATT_DISCHARGED_SNK                  (BATT_PER_CELL_DISCHARGED_VOLT_SNK * TOTAL_BATTERY_CELL_COUNT)
 
+/* Total voltage of completely discharged Battery/SRC role */
+#define TOTAL_VBATT_DISCHARGED_SRC                  (BATT_PER_CELL_DISCHARGED_VOLT_SRC * TOTAL_BATTERY_CELL_COUNT)
+
 /* Total Battery voltage below which UVP Is true and charging is not allowed */
 #define PRIMARY_VBATT_UVP_THRESHOLD                 (BATT_PER_CELL_ALLOWED_MIN_VOLT * TOTAL_BATTERY_CELL_COUNT)
+
+/* Battery has BMS (Battery Management System) that requires wake-up from deep discharge
+ * Set to 1 to enable BMS wake-up and trickle charge logic for deeply discharged batteries
+ * Set to 0 to disable this logic (batteries without BMS protection) */
+#define BATT_HAS_BMS                                1
+
+#if BATT_HAS_BMS
+/* BMS wake-up detection: voltage threshold to detect no battery (in mV).
+ * Set to 0.75x the charger output voltage during trickle charging.
+ * If voltage exceeds this, no battery is connected (charger output floating).
+ */
+#define BMS_WAKEUP_NO_BATTERY_THRESHOLD             ((TOTAL_VBATT_MAX_ALLOWED_VOLT * 75u) / 100u)
+
+/* Per-cell threshold for no battery detection (in mV) */
+#define BMS_WAKEUP_NO_BATTERY_PER_CELL              (BMS_WAKEUP_NO_BATTERY_THRESHOLD / TOTAL_BATTERY_CELL_COUNT)
+
+/* Per-cell minimum voltage for trickle charge transition (in mV) */
+#define TRICKLE_CHARGE_MIN_VOLTAGE_PER_CELL         (750u)    /* Below 0.75V per cell: attempt BMS wake-up */
+
+/* Minimum voltage for trickle charge transition (in mV) */
+#define TRICKLE_CHARGE_MIN_VOLTAGE                  (TRICKLE_CHARGE_MIN_VOLTAGE_PER_CELL * TOTAL_BATTERY_CELL_COUNT)
+
+/* Trickle charge current limit in 10mA units (for Rsense = 5 mOhm) */
+#define TRICKLE_CHARGE_CURRENT                      (10u)     /* 100mA for trickle charge */
+
+/* Voltage threshold to exit trickle charge mode (in mV) */
+#define TRICKLE_CHARGE_EXIT_VOLTAGE                 (PRIMARY_VBATT_UVP_THRESHOLD)
+#endif /* BATT_HAS_BMS */
 
 /* Total allowed MAX current to charge the battery in 10mA.
  * Set this as per Battery datasheet.

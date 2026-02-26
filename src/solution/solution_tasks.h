@@ -42,6 +42,7 @@
 
 #include <stdbool.h>
 #include "cy_pdstack_common.h"
+#include "config.h"
 
 /* Enumeration for battery Pack ID */
 typedef enum
@@ -76,6 +77,7 @@ typedef struct battery_status
     volatile bool batt_otp_fault_active;            /* Flag to indicate the Pack otp fault condition exists. */
     volatile bool ntcp0_otp_fault_active;            /* Flag to indicate the NTCP0 otp fault condition exists. */
     volatile bool ntcp1_otp_fault_active;            /* Flag to indicate the NTCP1 otp fault condition exists. */
+    volatile bool bms_recovery_mode;                /* Flag to bypass UVP during BMS wake-up and trickle charging */
     uint8_t curr_chrg_cycle_num;                    /* Number of Full Charge cycles happened in the current Type C Connections */
     bool cv_mode_entered;                           /* Indicates CV mode of charging flowchart */
     uint16_t batt_max_curr_rating;                  /* Maximum allowed battery current rating in 10mA unit */

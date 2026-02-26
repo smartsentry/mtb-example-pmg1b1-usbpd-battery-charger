@@ -66,7 +66,6 @@
 
 #if DEBUG_UART_ENABLE
 #include "debug.h"
-//static char temp[80];
 #endif
 
 /* Pause between steps required to turn on buck-boost regulation */
@@ -281,6 +280,16 @@ static bool soln_vbat_uvp_cbk(void *callbackContext, bool state)
     cy_stc_pdstack_context_t * ptrPdStackContext = (cy_stc_pdstack_context_t *) ptrUsbPdContext->pdStackContext;
     cy_stc_battery_charging_context_t* ptrBatteryChargingContext = get_battery_charging_context(ptrPdStackContext->port);
     cy_stc_battery_status_t* batt_stat = &(ptrBatteryChargingContext->batteryStatus);
+    
+#if BATT_HAS_BMS
+    /* Skip UVP fault during BMS recovery mode (BMS wake-up and trickle charging) */
+    if(batt_stat->bms_recovery_mode)
+    {
+        DEBUG_PRINT("HW_BAT_UVP_DET (ignored - BMS recovery mode)\n");
+        return true;  /* Acknowledge interrupt but don't trigger fault */
+    }
+#endif /* BATT_HAS_BMS */
+    
     soln_batt_chgr_hw_disable(ptrPdStackContext);
 
     DEBUG_PRINT("HW_BAT_UVP_DET\n");
@@ -907,14 +916,41 @@ void soln_task(cy_stc_pdstack_context_t* ptrPdStackContext)
             break;
 #endif /* BATTERY_SIMULATOR_ENABLE */
 
-            /* <10V */
+#if BATT_HAS_BMS
+            /* Very low voltage: attempt BMS wake-up or trickle charge */
+            if(batt_stat->curr_batt_volt < TRICKLE_CHARGE_MIN_VOLTAGE)
+            {
+                DEBUG_PRINT_VAR("\r\n Very low batt voltage: %i mV - attempting BMS wakeup", batt_stat->curr_batt_volt);
+                batt_stat->bms_recovery_mode = true;  /* Bypass UVP during BMS wake-up */
+                gl_sln_batt_chg_alt_state = BATT_CHG_ALT_BMS_WAKEUP;
+            }
+            /* Low voltage: use trickle charge */
+            else if(batt_stat->curr_batt_volt < PRIMARY_VBATT_UVP_THRESHOLD)
+            {
+                DEBUG_PRINT_VAR("\r\n Low batt voltage: %i mV - trickle charge", batt_stat->curr_batt_volt);
+                batt_stat->bms_recovery_mode = true;  /* Bypass UVP during trickle charging */
+                gl_sln_batt_chg_alt_state = BATT_CHG_ALT_TRICKLE_MODE;
+            }
+            /* Discharged battery: pre-charge */
+            else if(batt_stat->curr_batt_volt < TOTAL_VBATT_DISCHARGED_SNK)
+            {
+                gl_sln_batt_chg_alt_state = BATT_CHG_ALT_INIT_CHARGE;
+            }
+#else /* BATT_HAS_BMS */
+            /* Without BMS: reject batteries below UVP threshold */
             if(batt_stat->curr_batt_volt < PRIMARY_VBATT_UVP_THRESHOLD)
             {
+                DEBUG_PRINT_VAR("\r\n Battery voltage too low: %i mV", batt_stat->curr_batt_volt);
                 gl_sln_batt_chg_alt_state = BATT_CHG_ALT_BAD_BATTERY;
                 break;
             }
-
-            /* 15V */
+            /* Discharged battery: pre-charge */
+            else if(batt_stat->curr_batt_volt < TOTAL_VBATT_DISCHARGED_SNK)
+            {
+                gl_sln_batt_chg_alt_state = BATT_CHG_ALT_INIT_CHARGE;
+            }
+#endif /* BATT_HAS_BMS */
+            
             if(batt_stat->curr_batt_volt < TOTAL_VBATT_DISCHARGED_SNK)
             {
                 gl_sln_batt_chg_alt_state = BATT_CHG_ALT_INIT_CHARGE;
@@ -1075,6 +1111,107 @@ void soln_task(cy_stc_pdstack_context_t* ptrPdStackContext)
 
             switch(gl_sln_batt_chg_alt_state)
             {
+#if BATT_HAS_BMS
+            case BATT_CHG_ALT_BMS_WAKEUP:
+                /* Attempt BMS wake-up: apply minimal current and monitor voltage */
+                {
+                    static uint16_t bms_wakeup_start_voltage = 0;
+                    static uint8_t bms_wakeup_attempts = 0;
+                    
+                    if(bms_wakeup_start_voltage == 0)
+                    {
+                        /* First entry: record starting voltage */
+                        bms_wakeup_start_voltage = batt_stat->curr_batt_volt;
+                        bms_wakeup_attempts = 0;
+                        DEBUG_PRINT_VAR("\n BMS wakeup start: %i mV", bms_wakeup_start_voltage);
+                    }
+                    
+                    bms_wakeup_attempts++;
+                    
+                    /* Check if voltage jumped to buck-boost output (no battery) */
+                    if(batt_stat->curr_batt_volt > BMS_WAKEUP_NO_BATTERY_THRESHOLD)
+                    {
+                        DEBUG_PRINT_VAR("\n No battery detected: voltage jumped to %i mV", batt_stat->curr_batt_volt);
+                        bms_wakeup_start_voltage = 0;
+                        batt_stat->bms_recovery_mode = false;  /* Exit recovery mode */
+                        gl_sln_batt_chg_alt_state = BATT_CHG_ALT_BAD_BATTERY;
+                        break;
+                    }
+                    
+                    /* Check if BMS woke up and voltage is now readable */
+                    if(batt_stat->curr_batt_volt >= TRICKLE_CHARGE_MIN_VOLTAGE)
+                    {
+                        DEBUG_PRINT_VAR("\n BMS woke up: voltage now %i mV", batt_stat->curr_batt_volt);
+                        bms_wakeup_start_voltage = 0;
+                        
+                        if(batt_stat->curr_batt_volt < PRIMARY_VBATT_UVP_THRESHOLD)
+                        {
+                            batt_stat->bms_recovery_mode = true;  /* Keep UVP bypass during trickle */
+                            gl_sln_batt_chg_alt_state = BATT_CHG_ALT_TRICKLE_MODE;
+                        }
+                        else if(batt_stat->curr_batt_volt < TOTAL_VBATT_DISCHARGED_SNK)
+                        {
+                            batt_stat->bms_recovery_mode = false;  /* Exit recovery - voltage safe */
+                            gl_sln_batt_chg_alt_state = BATT_CHG_ALT_INIT_CHARGE;
+                        }
+                        else
+                        {
+                            gl_sln_batt_chg_alt_state = BATT_CHG_ALT_CC_MODE;
+                        }
+                        break;
+                    }
+                    
+                    /* After 3 seconds (15 cycles * 200ms), give up if voltage still too low */
+                    if(bms_wakeup_attempts > 15)
+                    {
+                        DEBUG_PRINT("\n BMS wakeup failed: battery too discharged or damaged");
+                        bms_wakeup_start_voltage = 0;
+                        batt_stat->bms_recovery_mode = false;  /* Exit recovery mode */
+                        gl_sln_batt_chg_alt_state = BATT_CHG_ALT_BAD_BATTERY;
+                        break;
+                    }
+                    
+                    /* Continue with minimal current for BMS wake-up */
+                    batt_stat->cur_bb_vout = TOTAL_VBATT_MAX_ALLOWED_VOLT;
+#if DEBUG_UART_ENABLE
+                    sprintf(temp, "\n BMS wakeup attempt %i, voltage: %i mV", bms_wakeup_attempts, batt_stat->curr_batt_volt);
+                    debug_print(temp);
+#endif
+                }
+                break;
+                
+#endif /* BATT_HAS_BMS */
+                
+            case BATT_CHG_ALT_BAD_BATTERY:
+                /* No battery detected or battery failed wake-up - mark as not present */
+                DEBUG_PRINT("\n Bad battery detected - marking as not present");
+                batt_stat->batt_pack_type = NO_BATTERY;
+                break;
+                
+#if BATT_HAS_BMS
+            case BATT_CHG_ALT_TRICKLE_MODE:
+#if TRICKLE_CHARGE_TIMER_ENABLE
+                charging_timeout_cmd(ptrPdStackContext, CHARGING_TIMEOUT_TRICKLE_INIT);
+#endif /* TRICKLE_CHARGE_TIMER_ENABLE */
+                batt_stat->cur_bb_vout = TOTAL_VBATT_MAX_ALLOWED_VOLT;
+                /* Exit trickle charge when voltage reaches threshold */
+                if(batt_stat->curr_batt_volt >= TRICKLE_CHARGE_EXIT_VOLTAGE)
+                {
+                    DEBUG_PRINT_VAR("\n Trickle charge complete: %i mV", batt_stat->curr_batt_volt);
+                    batt_stat->bms_recovery_mode = false;  /* Exit recovery - voltage safe */
+                    if(batt_stat->curr_batt_volt < TOTAL_VBATT_DISCHARGED_SNK)
+                    {
+                        gl_sln_batt_chg_alt_state = BATT_CHG_ALT_INIT_CHARGE;
+                    }
+                    else
+                    {
+                        gl_sln_batt_chg_alt_state = BATT_CHG_ALT_CC_MODE;
+                    }
+                }
+                break;
+                
+#endif /* BATT_HAS_BMS */
+                
             case BATT_CHG_ALT_INIT_CHARGE:
 #if PRE_CHARGE_TIMER_ENABLE
                 charging_timeout_cmd(ptrPdStackContext, CHARGING_TIMEOUT_PRECHARGE_INIT);
@@ -1118,6 +1255,24 @@ void soln_task(cy_stc_pdstack_context_t* ptrPdStackContext)
 
             switch(gl_sln_batt_chg_alt_state)
             {
+            case BATT_CHG_ALT_BAD_BATTERY:
+                /* No current for bad battery */
+                calc_batt_ip_curr = 0;
+                break;
+                
+#if BATT_HAS_BMS
+            case BATT_CHG_ALT_BMS_WAKEUP:
+                /* Use minimal current for BMS wake-up detection */
+                calc_batt_ip_curr = update_current_limit(ptrPdStackContext,TRICKLE_CHARGE_CURRENT);
+                break;
+                
+            case BATT_CHG_ALT_TRICKLE_MODE:
+                /* Use low current for trickle charge */
+                calc_batt_ip_curr = update_current_limit(ptrPdStackContext,TRICKLE_CHARGE_CURRENT);
+                break;
+                
+#endif /* BATT_HAS_BMS */
+                
             case BATT_CHG_ALT_INIT_CHARGE:
                 calc_batt_ip_curr = update_current_limit(ptrPdStackContext,MIN_IBAT_CHARGING_CURR);
                 break;

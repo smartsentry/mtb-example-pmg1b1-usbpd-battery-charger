@@ -205,6 +205,9 @@ void clear_flags_on_usbc_disconnect (cy_stc_battery_charging_context_t *ptrBatte
     batt_stat->batt_rcp_fault_active = false;
     batt_stat->batt_ovp_fault_active = false;
     batt_stat->batt_uvp_fault_active = false;
+#if BATT_HAS_BMS
+    batt_stat->bms_recovery_mode = false;
+#endif /* BATT_HAS_BMS */
 }
 
 void reset_battery_faults(cy_stc_battery_charging_context_t *ptrBatteryChargingContext)
@@ -359,6 +362,9 @@ uint16_t cell[5];
     }
 #endif /* PRINT_CV */
 
+    /* Check battery presence based on measured voltage */
+#if !BATT_HAS_BMS
+    /* Without BMS: reject batteries with no measurable voltage */
     if(total_batt_volt <= BATTERY_REMOVAL_THRESHOLD)
     {
         batt_stat->batt_pack_type = NO_BATTERY;
@@ -368,6 +374,12 @@ uint16_t cell[5];
     {
         batt_stat->batt_pack_type = BATTERY_PRESENT;
     }
+#else
+    /* With BMS: always mark battery as present for very low voltages to allow BMS wake-up detection.
+     * The BMS wake-up logic will determine if it's truly no battery by monitoring 
+     * voltage behavior when current is applied.  */
+    batt_stat->batt_pack_type = BATTERY_PRESENT;
+#endif /* BATT_HAS_BMS */
 
 #if (CELL_MONITORING_DISABLE == 0)
     if(is_batt_in_ovp == true)
@@ -383,8 +395,14 @@ uint16_t cell[5];
 
     if(is_batt_in_uvp == true)
     {
-        DEBUG_PRINT("\n Battery is in UVP");
-        batt_stat->batt_uvp_fault_active = true;
+#if BATT_HAS_BMS
+        /* Skip UVP fault during BMS recovery mode (BMS wake-up and trickle charging) */
+        if(!batt_stat->bms_recovery_mode)
+#endif /* BATT_HAS_BMS */
+        {
+            DEBUG_PRINT("\n Battery is in UVP");
+            batt_stat->batt_uvp_fault_active = true;
+        }
     }
     else
     {

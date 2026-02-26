@@ -45,6 +45,7 @@
 #include "cy_usbpd_vbus_ctrl.h"
 #include "cy_usbpd_phy.h"
 #include "cy_pdutils_sw_timer.h"
+#include "config.h"
 #include "solution_tasks.h"
 #include <stdbool.h>
 
@@ -92,6 +93,8 @@ typedef enum {
 typedef enum {
     BATT_CHG_ALT_LOOK4BATTERY,
     BATT_CHG_ALT_BAD_BATTERY,
+    BATT_CHG_ALT_BMS_WAKEUP,        /* Attempting BMS wake-up for deeply discharged battery */
+    BATT_CHG_ALT_TRICKLE_MODE,      /* Trickle charge for very low voltage batteries */
     BATT_CHG_ALT_INIT_CHARGE,
     BATT_CHG_ALT_CC_MODE,
     BATT_CHG_ALT_CHARGE_FULL,

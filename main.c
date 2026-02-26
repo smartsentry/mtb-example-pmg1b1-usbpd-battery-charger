@@ -76,8 +76,6 @@
 char temp[80];
 #endif
 
-#define BATTERY_VOLTAGE_THRESHOLD_MV 11000
-
 cy_stc_pdutils_sw_timer_t gl_TimerCtx;
 cy_stc_usbpd_context_t gl_UsbPdPort0Ctx;
 
@@ -309,7 +307,7 @@ static void switch_interrupt_handler(void)
 {
         cy_stc_battery_charging_context_t* ptrBatteryChargingContext = get_battery_charging_context(0);
         cy_stc_battery_status_t* batt_stat = &(ptrBatteryChargingContext->batteryStatus);
-        if(batt_stat->curr_batt_volt > BATTERY_VOLTAGE_THRESHOLD_MV)
+        if(batt_stat->curr_batt_volt > TOTAL_VBATT_DISCHARGED_SRC)
         {
             sprintf(temp, "Battery voltage OK\r\n");
             debug_print( temp);
@@ -608,9 +606,18 @@ int main(void)
 
         cy_stc_battery_charging_context_t* ptrBatteryChargingContext = get_battery_charging_context(0);
         cy_stc_battery_status_t* batt_stat = &(ptrBatteryChargingContext->batteryStatus);
-        // sprintf(temp, "CSTEST Batt volt: %d mV, Curr: %d mA, OCP fault: %d\r\n", batt_stat->curr_batt_volt, batt_stat->curr_batt_curr, batt_stat->batt_ocp_fault_active);
-        // debug_print( temp);
-        if(batt_stat->curr_batt_volt < BATTERY_VOLTAGE_THRESHOLD_MV)
+        cy_stc_battery_measure_t* batt_meas_ctx = &(ptrBatteryChargingContext->batteryMeasure);
+
+        cy_stc_pdstack_context_t * PdStackContext = ptrBatteryChargingContext->ptrPdStack;
+
+        sprintf(temp, "CSTEST Batt volt: %d mV, Curr: %d mA, OCP fault: %d\r\n", batt_stat->curr_batt_volt, batt_stat->curr_batt_curr, batt_stat->batt_ocp_fault_active);
+        debug_print( temp);
+
+        int16_t vbus_in_volt = Cy_USBPD_Adc_MeasureVbusIn(PdStackContext->ptrUsbPdContext, CY_USBPD_ADC_ID_0, CY_USBPD_ADC_INPUT_AMUX_B);
+        sprintf(temp, "CSTEST Vbus in volt: %d mV\r\n", vbus_in_volt);
+        debug_print( temp);
+
+        if(batt_stat->curr_batt_volt < TOTAL_VBATT_DISCHARGED_SRC)
         {
             /* Only turn off power if it's currently on. */
             if(Cy_GPIO_Read(P1_3_12V_EN_PORT, P1_3_12V_EN_PIN))
