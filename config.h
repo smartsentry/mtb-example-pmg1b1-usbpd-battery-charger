@@ -125,7 +125,7 @@ extern char temp[];
 #define PRE_CHARGE_TIMER_VALUE                      (90u)
 
 /* Enable normal charge timer CC + CV */
-#define NORMAL_CHARGE_TIMER_ENABLE                  (1u)
+#define NORMAL_CHARGE_TIMER_ENABLE                  (0u)//dont want to do this becasuse the system may be runnning
 /* Normal charge timeout in minutes. */
 #define NORMAL_CHARGE_TIMER_VALUE                   (6 * 60u)
 
@@ -244,6 +244,11 @@ extern char temp[];
  * (more accurate) pre-carge current value (actual Ibat_min will be 150mA for Rsense = 10 mOhm).
  */
 #define MIN_IBAT_CHARGING_CURR                      (30u)
+
+/* System load current compensation in 10mA units.
+ * Added to BB output current command when 12V system load is enabled.
+ */
+#define SYSTEM_LOAD_RESERVED_CURR                   (100u)
 
 #define STEP_IBAT_CHARGING_CURR                     (30u)
 

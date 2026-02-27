@@ -1104,10 +1104,16 @@ void soln_task(cy_stc_pdstack_context_t* ptrPdStackContext)
 #if ENABLE_ALL_BATT_MONITORING
             uint16_t calc_batt_ip_volt = batt_stat->curr_batt_volt + TOTAL_VBATT_HYST_THRESH;
             uint16_t calc_batt_ip_curr = batt_stat->cur_bb_pwr / calc_batt_ip_volt;
+            uint16_t system_load_curr = 0;
+
+            if(Cy_GPIO_Read(P1_3_12V_EN_PORT, P1_3_12V_EN_PIN))
+            {
+            system_load_curr = update_current_limit(ptrPdStackContext, SYSTEM_LOAD_RESERVED_CURR);
+            }
 
             /* Limit available current */
-            calc_batt_ip_curr = CY_USBPD_GET_MIN(calc_batt_ip_curr, batt_stat->batt_max_curr_rating);
-            calc_batt_ip_curr = CY_USBPD_GET_MIN(calc_batt_ip_curr, VBAT_INPUT_CURR_MAX_SETTING);
+            calc_batt_ip_curr = CY_USBPD_GET_MIN(calc_batt_ip_curr, batt_stat->batt_max_curr_rating+system_load_curr);
+            calc_batt_ip_curr = CY_USBPD_GET_MIN(calc_batt_ip_curr, VBAT_INPUT_CURR_MAX_SETTING+system_load_curr);
 
             switch(gl_sln_batt_chg_alt_state)
             {
@@ -1264,11 +1270,19 @@ void soln_task(cy_stc_pdstack_context_t* ptrPdStackContext)
             case BATT_CHG_ALT_BMS_WAKEUP:
                 /* Use minimal current for BMS wake-up detection */
                 calc_batt_ip_curr = update_current_limit(ptrPdStackContext,TRICKLE_CHARGE_CURRENT);
+                if(Cy_GPIO_Read(P1_3_12V_EN_PORT, P1_3_12V_EN_PIN))
+                {
+                    calc_batt_ip_curr += update_current_limit(ptrPdStackContext, SYSTEM_LOAD_RESERVED_CURR);
+                }
                 break;
                 
             case BATT_CHG_ALT_TRICKLE_MODE:
                 /* Use low current for trickle charge */
                 calc_batt_ip_curr = update_current_limit(ptrPdStackContext,TRICKLE_CHARGE_CURRENT);
+                if(Cy_GPIO_Read(P1_3_12V_EN_PORT, P1_3_12V_EN_PIN))
+                {
+                    calc_batt_ip_curr += update_current_limit(ptrPdStackContext, SYSTEM_LOAD_RESERVED_CURR);
+                }
                 break;
                 
 #endif /* BATT_HAS_BMS */
