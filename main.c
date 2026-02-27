@@ -307,7 +307,7 @@ static void switch_interrupt_handler(void)
 {
         cy_stc_battery_charging_context_t* ptrBatteryChargingContext = get_battery_charging_context(0);
         cy_stc_battery_status_t* batt_stat = &(ptrBatteryChargingContext->batteryStatus);
-        if(batt_stat->curr_batt_volt > TOTAL_VBATT_DISCHARGED_SRC)
+        if(batt_stat->curr_batt_volt > TOTAL_VBATT_RECONNECT_SRC)
         {
             sprintf(temp, "Battery voltage OK\r\n");
             debug_print( temp);
@@ -610,12 +610,12 @@ int main(void)
 
         cy_stc_pdstack_context_t * PdStackContext = ptrBatteryChargingContext->ptrPdStack;
 
-        sprintf(temp, "CSTEST Batt volt: %d mV, Curr: %d mA, OCP fault: %d\r\n", batt_stat->curr_batt_volt, batt_stat->curr_batt_curr, batt_stat->batt_ocp_fault_active);
-        debug_print( temp);
+        // sprintf(temp, "CSTEST Batt volt: %d mV, Curr: %d mA, OCP fault: %d\r\n", batt_stat->curr_batt_volt, batt_stat->curr_batt_curr, batt_stat->batt_ocp_fault_active);
+        // debug_print( temp);
 
-        int16_t vbus_in_volt = Cy_USBPD_Adc_MeasureVbusIn(PdStackContext->ptrUsbPdContext, CY_USBPD_ADC_ID_0, CY_USBPD_ADC_INPUT_AMUX_B);
-        sprintf(temp, "CSTEST Vbus in volt: %d mV\r\n", vbus_in_volt);
-        debug_print( temp);
+        // int16_t vbus_in_volt = Cy_USBPD_Adc_MeasureVbusIn(PdStackContext->ptrUsbPdContext, CY_USBPD_ADC_ID_0, CY_USBPD_ADC_INPUT_AMUX_B);
+        // sprintf(temp, "CSTEST Vbus in volt: %d mV\r\n", vbus_in_volt);
+        // debug_print( temp);
 
         if(batt_stat->curr_batt_volt < TOTAL_VBATT_DISCHARGED_SRC)
         {

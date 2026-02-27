@@ -306,6 +306,15 @@ static bool soln_voutbb_rcp_cbk(void *callbackContext, bool state)
     cy_stc_battery_charging_context_t* ptrBatteryChargingContext = get_battery_charging_context(ptrPdStackContext->port);
     cy_stc_battery_status_t* batt_stat = &(ptrBatteryChargingContext->batteryStatus);
 
+#if BATT_HAS_BMS
+    /* Skip RCP fault during BMS recovery mode (BMS wake-up and trickle charging). */
+    if(batt_stat->bms_recovery_mode)
+    {
+        DEBUG_PRINT("HW_VOUTBB_RCP_INTR (ignored - BMS recovery mode)\n");
+        return true;
+    }
+#endif /* BATT_HAS_BMS */
+
     soln_batt_chgr_hw_disable(ptrPdStackContext);
 
     batt_stat->batt_rcp_fault_active = true;
@@ -761,18 +770,20 @@ void soln_task(cy_stc_pdstack_context_t* ptrPdStackContext)
         fault_st |= 2;
     if(batt_stat->batt_ocp_fault_active == true)
         fault_st |= 4;
-    if(batt_stat->batt_otp_fault_active == true)
+    if(batt_stat->batt_rcp_fault_active == true)
         fault_st |= 8;
-    if(batt_stat->ntcp0_otp_fault_active == true)
+    if(batt_stat->batt_otp_fault_active == true)
         fault_st |= 0x10;
+    if(batt_stat->ntcp0_otp_fault_active == true)
+        fault_st |= 0x20;
     if(batt_stat->ntcp1_otp_fault_active == true)
     {
-        fault_st |= 0x20;
+        fault_st |= 0x40;
     }
 #if (TRICKLE_CHARGE_TIMER_ENABLE || PRE_CHARGE_TIMER_ENABLE || NORMAL_CHARGE_TIMER_ENABLE)
     if(batt_stat->timeout_expired == true)
     {
-        fault_st |= 0x40;
+        fault_st |= 0x80;
     }
 #endif /*(TRICKLE_CHARGE_TIMER_ENABLE || PRE_CHARGE_TIMER_ENABLE || NORMAL_CHARGE_TIMER_ENABLE)*/
     sprintf(temp, "\n CHGR FSM STATE %i ALT %i FLTT %x\n",gl_sln_batt_chg_state,gl_sln_batt_chg_alt_state,fault_st);
@@ -951,12 +962,7 @@ void soln_task(cy_stc_pdstack_context_t* ptrPdStackContext)
             }
 #endif /* BATT_HAS_BMS */
             
-            if(batt_stat->curr_batt_volt < TOTAL_VBATT_DISCHARGED_SNK)
-            {
-                gl_sln_batt_chg_alt_state = BATT_CHG_ALT_INIT_CHARGE;
-            }
-
-            /* set BB out when Vbat <= 20V */
+            /* set BB out when Vbat <= recharge threshold */
             else if((batt_stat->curr_batt_volt < TOTAL_VBATT_RECHARGE_THRESH)
                     && (batt_stat->is_cell_recharge == true)
                     )
@@ -1104,16 +1110,16 @@ void soln_task(cy_stc_pdstack_context_t* ptrPdStackContext)
 #if ENABLE_ALL_BATT_MONITORING
             uint16_t calc_batt_ip_volt = batt_stat->curr_batt_volt + TOTAL_VBATT_HYST_THRESH;
             uint16_t calc_batt_ip_curr = batt_stat->cur_bb_pwr / calc_batt_ip_volt;
-            uint16_t system_load_curr = 0;
+            uint16_t system_load_curr = 0u;
 
             if(Cy_GPIO_Read(P1_3_12V_EN_PORT, P1_3_12V_EN_PIN))
             {
-            system_load_curr = update_current_limit(ptrPdStackContext, SYSTEM_LOAD_RESERVED_CURR);
+                system_load_curr = update_current_limit(ptrPdStackContext, SYSTEM_LOAD_RESERVED_CURR);
             }
 
             /* Limit available current */
-            calc_batt_ip_curr = CY_USBPD_GET_MIN(calc_batt_ip_curr, batt_stat->batt_max_curr_rating+system_load_curr);
-            calc_batt_ip_curr = CY_USBPD_GET_MIN(calc_batt_ip_curr, VBAT_INPUT_CURR_MAX_SETTING+system_load_curr);
+            calc_batt_ip_curr = CY_USBPD_GET_MIN(calc_batt_ip_curr, batt_stat->batt_max_curr_rating + system_load_curr);
+            calc_batt_ip_curr = CY_USBPD_GET_MIN(calc_batt_ip_curr, update_current_limit(ptrPdStackContext, VBAT_INPUT_CURR_MAX_SETTING) + system_load_curr);
 
             switch(gl_sln_batt_chg_alt_state)
             {
@@ -1289,6 +1295,10 @@ void soln_task(cy_stc_pdstack_context_t* ptrPdStackContext)
                 
             case BATT_CHG_ALT_INIT_CHARGE:
                 calc_batt_ip_curr = update_current_limit(ptrPdStackContext,MIN_IBAT_CHARGING_CURR);
+                if(Cy_GPIO_Read(P1_3_12V_EN_PORT, P1_3_12V_EN_PIN))
+                {
+                    calc_batt_ip_curr += update_current_limit(ptrPdStackContext, SYSTEM_LOAD_RESERVED_CURR);
+                }
                 break;
 
             case BATT_CHG_ALT_CC_MODE:

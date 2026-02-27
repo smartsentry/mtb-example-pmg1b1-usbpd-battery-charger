@@ -161,6 +161,9 @@ extern char temp[];
 /* Completely discharged battery cell voltage per cell in mV/SRC */
 #define BATT_PER_CELL_DISCHARGED_VOLT_SRC           (2800u)
 
+/* Battery reconnect voltage per cell in mV/SRC */
+#define BATT_PER_CELL_RECONNECT_VOLT_SRC             (3000u)
+
 /* Battery cell Recharge voltage per cell in mV */
 #define BATT_PER_CELL_RECHARGE_VOLT                 (4000u)
 
@@ -199,6 +202,9 @@ extern char temp[];
 
 /* Total voltage of completely discharged Battery/SRC role */
 #define TOTAL_VBATT_DISCHARGED_SRC                  (BATT_PER_CELL_DISCHARGED_VOLT_SRC * TOTAL_BATTERY_CELL_COUNT)
+
+/* Total battery reconnect voltage/SRC role */
+#define TOTAL_VBATT_RECONNECT_SRC                   (BATT_PER_CELL_RECONNECT_VOLT_SRC * TOTAL_BATTERY_CELL_COUNT)
 
 /* Total Battery voltage below which UVP Is true and charging is not allowed */
 #define PRIMARY_VBATT_UVP_THRESHOLD                 (BATT_PER_CELL_ALLOWED_MIN_VOLT * TOTAL_BATTERY_CELL_COUNT)
